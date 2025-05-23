@@ -18,7 +18,7 @@ const DEFAULT_PROMPT = `không trả thêm thông tin của trường khác Bạ
  * @param {string[]} intentNames
  * @returns {Promise<string>} tên intent có sẵn hoặc 'none'
  */
-async function classifyIntent(message, intentNames) {
+async function classifyIntent(message, intentNames, maxRetries = 3) {
   const listStr = intentNames.join(", ");
   const prompt = `
 Bạn là hệ thống phân loại intent.  
@@ -26,23 +26,45 @@ Cho trước câu hỏi người dùng và danh sách intent có sẵn, chỉ tr
 Danh sách intents: [${listStr}]  
 Câu hỏi: "${message}"  
 => Chỉ trả về một trong các giá trị: tên_intent | none
-`;
-  const res = await axios.post(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      model: "deepseek/deepseek-prover-v2:free",
-      messages: [{ role: "user", content: prompt }],
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  `;
 
-  const choice = res.data.choices?.[0]?.message?.content.trim().toLowerCase();
-  return intentNames.includes(choice) ? choice : "none";
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          model: "deepseek/deepseek-prover-v2:free",
+          messages: [{ role: "user", content: prompt }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+
+      const choice = res.data.choices?.[0]?.message?.content
+        .trim()
+        .toLowerCase();
+      return intentNames.includes(choice) ? choice : "none";
+    } catch (error) {
+      if (error.response?.status === 429) {
+        console.warn(
+          `classifyIntent: Bị giới hạn rate, thử lại lần ${
+            attempt + 1
+          }/${maxRetries}`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } else {
+        console.error("classifyIntent error:", error.message);
+        break;
+      }
+    }
+  }
+
+  return "none";
 }
 
 /**
@@ -50,40 +72,51 @@ Câu hỏi: "${message}"
  * @param {string} message
  * @returns {Promise<string>}
  */
-async function detectIntentName(message) {
+async function detectIntentName(message, maxRetries = 3) {
   const prompt = `Phân tích câu sau và trả về tên intent duy nhất, không dấu, không khoảng trắng, dạng snake_case: "${message}"`;
 
-  try {
-    const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "deepseek/deepseek-prover-v2:free",
-        messages: [{ role: "user", content: prompt }],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          Referer: "http://localhost:4000",
-          "X-Title": "Enrollment Bot",
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          model: "deepseek/deepseek-prover-v2:free",
+          messages: [{ role: "user", content: prompt }],
         },
-      }
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            Referer: "http://localhost:4000",
+            "X-Title": "Enrollment Bot",
+          },
+          timeout: 10000,
+        }
+      );
 
-    const content = response.data.choices?.[0]?.message?.content || "";
-    return content
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, "_");
-  } catch (error) {
-    console.error(
-      "Error detecting intent:",
-      error.response?.data || error.message
-    );
-    return "unknown_intent";
+      const content = response.data.choices?.[0]?.message?.content || "";
+      return content
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, "_");
+    } catch (error) {
+      if (error.response?.status === 429) {
+        console.warn(
+          `detectIntentName: Bị giới hạn rate, thử lại lần ${
+            attempt + 1
+          }/${maxRetries}`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } else {
+        console.error("detectIntentName error:", error.message);
+        break;
+      }
+    }
   }
+
+  return "unknown_intent";
 }
 
 // Main chat endpoint
