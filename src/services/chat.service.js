@@ -13,29 +13,28 @@ async function sendMessage(userMessage, intentName) {
     throw err;
   }
 
-  // 2. Build system prompt
-  const systemContent = intent.description
-    ? `${intent.description}\n\n${intent.promptTemplate}`
-    : intent.promptTemplate;
+  // 2. Nếu có description, trả luôn về description và dừng
+  if (intent.description && intent.description.trim() !== "") {
+    console.log("↪ Priority reply using intent.description");
+    return { reply: intent.description };
+  }
 
-  // 3. Debug logs: chỉ in system vs user message, không nhầm lẫn
+  // 3. Nếu không có description, build system prompt như bình thường
+  const systemContent = intent.promptTemplate;
+
   console.log("↪ System prompt:", systemContent);
   console.log("↪ User message:", userMessage);
 
-  // 4. Chuẩn bị payload cho OpenRouter
+  // 4. Gọi OpenRouter
   const messages = [
     { role: "system", content: systemContent },
     { role: "user", content: userMessage },
   ];
 
   try {
-    // 5. Gọi API
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "openai/gpt-3.5-turbo",
-        messages,
-      },
+      { model: "openai/gpt-3.5-turbo", messages },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -46,13 +45,9 @@ async function sendMessage(userMessage, intentName) {
       }
     );
 
-    // 6. Xử lý reply
-    const botReplyRaw = response.data.choices[0].message.content;
-    const botReply = botReplyRaw ? botReplyRaw.trim() : "";
-
+    const botReply = response.data.choices[0].message.content.trim();
     return { reply: botReply };
   } catch (error) {
-    // 7. Xử lý lỗi
     if (error.response?.status === 429) {
       console.error(
         "Bạn đã vượt quá quota hoặc bị giới hạn rate limit. Vui lòng kiểm tra tài khoản."
