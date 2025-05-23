@@ -30,7 +30,7 @@ Câu hỏi: "${message}"
   const res = await axios.post(
     "https://openrouter.ai/api/v1/chat/completions",
     {
-      model: "google/gemma-3n-e4b-it:free",
+      model: "deepseek/deepseek-prover-v2:free",
       messages: [{ role: "user", content: prompt }],
     },
     {
@@ -57,7 +57,7 @@ async function detectIntentName(message) {
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "google/gemma-3n-e4b-it:free",
+        model: "deepseek/deepseek-prover-v2:free",
         messages: [{ role: "user", content: prompt }],
       },
       {
