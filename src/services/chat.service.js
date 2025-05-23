@@ -5,7 +5,7 @@ const axios = require("axios");
 const Intent = require("../models/intent.model");
 
 async function sendMessage(userMessage, intentName) {
-  // 1. Lấy intent từ DB
+  // 1. Lấy intent
   const intent = await Intent.findOne({ name: intentName });
   if (!intent) {
     const err = new Error(`Intent "${intentName}" không tồn tại.`);
@@ -13,19 +13,17 @@ async function sendMessage(userMessage, intentName) {
     throw err;
   }
 
-  // 2. Nếu có description, trả luôn về description và dừng
-  if (intent.description && intent.description.trim() !== "") {
-    console.log("↪ Priority reply using intent.description");
-    return { reply: intent.description };
-  }
+  // 2. Build system prompt: nếu có description thì đưa description vào để AI "chỉnh sửa"
+  const basePrompt = intent.promptTemplate;
+  const systemContent = intent.description
+    ? `Dưới đây là thông tin gốc (description) của intent:\n\n"${intent.description}"\n\nHãy dùng nó làm cơ sở, kết hợp với nội dung sau để trả lời người dùng một cách tự nhiên, thêm ngữ khí thân thiện, rõ ràng và đầy đủ:\n\n${basePrompt}`
+    : basePrompt;
 
-  // 3. Nếu không có description, build system prompt như bình thường
-  const systemContent = intent.promptTemplate;
-
+  // 3. Debug logs
   console.log("↪ System prompt:", systemContent);
   console.log("↪ User message:", userMessage);
 
-  // 4. Gọi OpenRouter
+  // 4. Gọi OpenRouter API
   const messages = [
     { role: "system", content: systemContent },
     { role: "user", content: userMessage },
@@ -49,9 +47,7 @@ async function sendMessage(userMessage, intentName) {
     return { reply: botReply };
   } catch (error) {
     if (error.response?.status === 429) {
-      console.error(
-        "Bạn đã vượt quá quota hoặc bị giới hạn rate limit. Vui lòng kiểm tra tài khoản."
-      );
+      console.error("Bạn đã vượt quá quota hoặc bị giới hạn rate limit.");
     } else {
       console.error("Lỗi khi gọi API OpenRouter:", error.message);
     }
