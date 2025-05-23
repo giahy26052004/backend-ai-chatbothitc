@@ -1,14 +1,11 @@
+// File: services/chat.service.js
+
 require("dotenv").config();
 const axios = require("axios");
 const Intent = require("../models/intent.model");
-const Session = require("../models/session.model");
 
-async function sendMessage(sessionId, userMessage, intentName) {
-  let session = sessionId ? await Session.findById(sessionId) : null;
-  if (!session) {
-    session = await Session.create({ context: [] });
-  }
-
+async function sendMessage(userMessage, intentName) {
+  // 1. Lấy intent từ DB
   const intent = await Intent.findOne({ name: intentName });
   if (!intent) {
     const err = new Error(`Intent "${intentName}" không tồn tại.`);
@@ -16,67 +13,49 @@ async function sendMessage(sessionId, userMessage, intentName) {
     throw err;
   }
 
+  // 2. Build system prompt
   const systemContent = intent.description
     ? `${intent.description}\n\n${intent.promptTemplate}`
     : intent.promptTemplate;
 
-  const systemMsg = { role: "system", content: systemContent };
-  const history = session.context.map(({ role, content }) => ({
-    role,
-    content,
-  }));
+  // 3. Debug logs: chỉ in system vs user message, không nhầm lẫn
+  console.log("↪ System prompt:", systemContent);
+  console.log("↪ User message:", userMessage);
 
+  // 4. Chuẩn bị payload cho OpenRouter
   const messages = [
-    systemMsg,
-    ...history,
+    { role: "system", content: systemContent },
     { role: "user", content: userMessage },
   ];
 
   try {
+    // 5. Gọi API
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "deepseek/deepseek-chat:free", // hoặc model bạn muốn dùng
+        model: "openai/gpt-3.5-turbo",
         messages,
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          Referer: "http://localhost:4000", // hoặc domain app bạn
+          Referer: "http://localhost:4000",
           "X-Title": "Enrollment Bot",
         },
       }
     );
 
+    // 6. Xử lý reply
     const botReplyRaw = response.data.choices[0].message.content;
     const botReply = botReplyRaw ? botReplyRaw.trim() : "";
 
-    // Loại bỏ những message context không hợp lệ trước khi push
-    session.context = session.context.filter(
-      (msg) => msg.content && msg.content.trim() !== ""
-    );
-
-    if (userMessage && userMessage.trim() !== "") {
-      session.context.push({ role: "user", content: userMessage });
-    }
-
-    if (botReply && botReply.trim() !== "") {
-      session.context.push({ role: "assistant", content: botReply });
-    }
-
-    if (session.context.length > 40) {
-      session.context = session.context.slice(-40);
-    }
-
-    session.updatedAt = new Date();
-    await session.save();
-
-    return { sessionId: session._id.toString(), reply: botReply };
+    return { reply: botReply };
   } catch (error) {
-    if (error.response && error.response.status === 429) {
+    // 7. Xử lý lỗi
+    if (error.response?.status === 429) {
       console.error(
-        "Bạn đã vượt quá quota hoặc bị giới hạn rate limit. Vui lòng kiểm tra tài khoản OpenRouter."
+        "Bạn đã vượt quá quota hoặc bị giới hạn rate limit. Vui lòng kiểm tra tài khoản."
       );
     } else {
       console.error("Lỗi khi gọi API OpenRouter:", error.message);
