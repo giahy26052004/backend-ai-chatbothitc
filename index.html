@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Test Upload Ảnh lên Laravel (PUT via POST)</title>
+  </head>
+  <body>
+    <h2>Upload ảnh (photo_payment_receipt) với Method Spoofing</h2>
+
+    <form id="uploadForm" enctype="multipart/form-data" method="POST">
+      <!-- Method spoofing để Laravel hiểu là PUT -->
+      <input type="hidden" name="_method" value="PUT" />
+
+      <!-- File input -->
+      <input
+        type="file"
+        name="photo_payment_receipt"
+        accept="image/*"
+        required
+      />
+      <br /><br />
+
+      <button type="submit">Gửi lên</button>
+    </form>
+
+    <pre
+      id="responseBox"
+      style="margin-top: 20px; background: #f0f0f0; padding: 10px"
+    ></pre>
+
+    <script>
+      const form = document.getElementById("uploadForm");
+      const responseBox = document.getElementById("responseBox");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+
+        try {
+          const res = await fetch(
+            "https://dev-admin-api.eyedesignsalon.net/api/bookings/9f0837b5-0120-4372-b620-f120c902efd0",
+            {
+              method: "POST", // BẮT BUỘC POST để Laravel parse multipart
+              headers: {
+                "X-Tenant-Id": "1", // gắn tenant
+                "Client-App": "booking-fe", // gắn client-app
+                // ❌ Không set Content-Type
+              },
+              body: formData,
+            }
+          );
+
+          const result = await res.json();
+          responseBox.innerText = JSON.stringify(result, null, 2);
+        } catch (err) {
+          responseBox.innerText = "Lỗi khi gửi request: " + err.message;
+        }
+      });
+    </script>
+  </body>
+</html>
